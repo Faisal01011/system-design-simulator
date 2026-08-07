@@ -9,7 +9,6 @@ import {
   ComponentType,
   ComponentConfig,
   DEFAULT_CONFIGS,
-  LoadBalancingAlgorithm,
 } from '../types';
 
 interface AppState {
@@ -104,7 +103,6 @@ export const useStore = create<AppState>()(
 
     addComponent: (type, position) => {
       const config = { ...DEFAULT_CONFIGS[type] };
-      const meta = type;
       const count = get().components.filter((c) => c.type === type).length + 1;
       const component: SystemComponent = {
         id: nextId(type),
@@ -242,7 +240,7 @@ export const useStore = create<AppState>()(
       }));
     },
 
-    tickSimulation: (dt) => {
+    tickSimulation: (_dt) => {
       // Implemented in simulation engine — store just holds the data
       // The real logic lives in simulation/engine.ts and is called from the React loop
     },
@@ -257,10 +255,8 @@ export const useStore = create<AppState>()(
       set((s) => ({ metrics: { ...s.metrics, ...partial } })),
 
     loadTemplate: (name) => {
-      // Templates defined in templates.ts and applied here
-      const { clearScene } = get();
-      clearScene();
-      // actual loading is done by the caller after clear
+      // Template loaders already clear and populate the scene.
+      // This action only tracks the active template in the UI.
       set({ activeTemplate: name });
     },
 
