@@ -103,6 +103,8 @@ export function runSimulationStep(dt: number) {
   const rpsPerClient = clients.length > 0 ? targetRps / clients.length : 0;
 
   for (const client of clients) {
+    // Use the global RPS by default, while still allowing an explicit
+    // per-client override from the Inspector when the user sets one.
     const clientRps = client.config.rps ?? rpsPerClient;
     const expected = clientRps * effectiveDt;
     const count = Math.floor(expected) + (Math.random() < expected % 1 ? 1 : 0);
@@ -182,7 +184,6 @@ export function runSimulationStep(dt: number) {
     if (!to.isHealthy || !canAccept) {
       errors++;
       to.totalErrors += 1;
-      // Spawn a short-lived error particle visual is handled by kind
       continue;
     }
 
@@ -245,7 +246,7 @@ export function runSimulationStep(dt: number) {
           nextTarget = runtime.get(outs[0].toId) ?? null;
         }
       }
-    } else if (to.type === 'server' || to.type === 'apiGateway') {
+    } else if (to.type === 'server' || to.type === 'apiGateway' || to.type === 'messageQueue') {
       const outs = getOutgoing(to.id, connections);
       if (outs.length > 0) {
         const cacheEdge = outs.find((e) => {

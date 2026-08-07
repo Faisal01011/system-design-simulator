@@ -31,7 +31,7 @@ export interface ComponentConfig {
   connectionLimit?: number;
 
   // Client specific
-  rps?: number;              // requests per second this client generates
+  rps?: number;              // optional per-client override; otherwise global RPS is used
 }
 
 export interface SystemComponent {
@@ -102,7 +102,6 @@ export const DEFAULT_CONFIGS: Record<ComponentType, ComponentConfig> = {
     capacity: 1000,
     processingLatencyMs: 0,
     failureRate: 0,
-    rps: 50,
   },
   loadBalancer: {
     capacity: 5000,
