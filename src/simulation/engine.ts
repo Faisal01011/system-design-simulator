@@ -13,11 +13,9 @@ import {
   SystemComponent,
   Connection,
   RequestParticle,
-  ComponentType,
   LoadBalancingAlgorithm,
 } from '../types';
 
-let lastTick = 0;
 let requestIdCounter = 0;
 let rrIndex: Record<string, number> = {};
 
@@ -175,8 +173,6 @@ export function runSimulationStep(dt: number) {
       if (hit) {
         cacheHits++;
         processMs = to.config.processingLatencyMs; // fast path
-        // Cache hit → request is satisfied, no further hop needed for this simple model
-        // (In a more advanced model we would still go to origin on miss)
       } else {
         // Miss → forward to next hop if any (usually DB or server)
         processMs = to.config.processingLatencyMs + 5;
@@ -206,9 +202,6 @@ export function runSimulationStep(dt: number) {
     to.lastLatencySamples = [...to.lastLatencySamples.slice(-49), processMs];
     to.avgLatencyMs =
       to.lastLatencySamples.reduce((a, b) => a + b, 0) / to.lastLatencySamples.length;
-
-    // Schedule release of the active slot (simplified: release next frames)
-    // For educational purposes we just decrement after a few frames via a decay
 
     const totalLatencySoFar = now - arrived.startTime + processMs;
 
@@ -344,7 +337,6 @@ export function runSimulationStep(dt: number) {
 
 /** Reset internal engine state */
 export function resetEngine() {
-  lastTick = 0;
   requestIdCounter = 0;
   rrIndex = {};
 }
