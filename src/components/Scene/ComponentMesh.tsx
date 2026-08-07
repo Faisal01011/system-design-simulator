@@ -1,6 +1,6 @@
-import { useRef, useMemo } from 'react';
-import { useFrame } from '@react-three/fiber';
-import { Html, RoundedBox } from '@react-three/drei';
+import { useRef, useMemo, useState } from 'react';
+import { useFrame, ThreeEvent } from '@react-three/fiber';
+import { Html } from '@react-three/drei';
 import * as THREE from 'three';
 import { SystemComponent, COMPONENT_META } from '../../types';
 import { useStore } from '../../store/useStore';
@@ -12,15 +12,17 @@ interface Props {
 export function ComponentMesh({ component }: Props) {
   const groupRef = useRef<THREE.Group>(null);
   const glowRef = useRef<THREE.Mesh>(null);
+  const [isDragging, setIsDragging] = useState(false);
+  const dragPlane = useRef(new THREE.Plane(new THREE.Vector3(0, 1, 0), 0));
+  const intersection = useRef(new THREE.Vector3());
+
   const {
     selectedId,
     hoverId,
     connectingFrom,
     selectComponent,
     setHover,
-    startConnecting,
-    addConnection,
-    cancelConnecting,
+    updateComponentPosition,
   } = useStore();
 
   const isSelected = selectedId === component.id;
@@ -28,29 +30,28 @@ export function ComponentMesh({ component }: Props) {
   const isConnecting = connectingFrom === component.id;
   const meta = COMPONENT_META[component.type];
 
-  // Visual intensity based on utilization
   const util = component.utilization;
-  const healthColor = component.isHealthy
-    ? meta.color
-    : '#ef4444';
-
+  const healthColor = component.isHealthy ? meta.color : '#ef4444';
   const emissiveIntensity = 0.15 + util * 0.55 + (isSelected ? 0.25 : 0);
 
-  useFrame((_, delta) => {
+  useFrame(() => {
     if (!groupRef.current) return;
 
-    // Subtle breathing / load animation
     const t = performance.now() * 0.001;
-    const scalePulse = 1 + Math.sin(t * 2 + component.id.length) * 0.015 * (0.3 + util);
-    groupRef.current.scale.setScalar(scalePulse);
+    const scalePulse =
+      1 + Math.sin(t * 2 + component.id.length) * 0.012 * (0.3 + util);
+    if (!isDragging) {
+      groupRef.current.scale.setScalar(scalePulse);
+    }
 
     if (glowRef.current) {
       const mat = glowRef.current.material as THREE.MeshStandardMaterial;
-      mat.emissiveIntensity = emissiveIntensity + Math.sin(t * 4) * 0.05 * util;
+      mat.emissiveIntensity =
+        emissiveIntensity + Math.sin(t * 4) * 0.04 * util;
     }
   });
 
-  const handleClick = (e: any) => {
+  const handleClick = (e: ThreeEvent<MouseEvent>) => {
     e.stopPropagation();
     const state = useStore.getState();
 
@@ -65,18 +66,44 @@ export function ComponentMesh({ component }: Props) {
     }
   };
 
-  const handlePointerOver = (e: any) => {
+  const handlePointerDown = (e: ThreeEvent<PointerEvent>) => {
+    if (connectingFrom) return;
+    e.stopPropagation();
+    (e.target as any).setPointerCapture?.(e.pointerId);
+    setIsDragging(true);
+    selectComponent(component.id);
+  };
+
+  const handlePointerUp = (e: ThreeEvent<PointerEvent>) => {
+    e.stopPropagation();
+    setIsDragging(false);
+  };
+
+  const handlePointerMove = (e: ThreeEvent<PointerEvent>) => {
+    if (!isDragging) return;
+    e.stopPropagation();
+    // Project onto XZ plane (y = 0)
+    e.ray.intersectPlane(dragPlane.current, intersection.current);
+    if (intersection.current) {
+      updateComponentPosition(component.id, [
+        intersection.current.x,
+        0,
+        intersection.current.z,
+      ]);
+    }
+  };
+
+  const handlePointerOver = (e: ThreeEvent<PointerEvent>) => {
     e.stopPropagation();
     setHover(component.id);
-    document.body.style.cursor = 'pointer';
+    document.body.style.cursor = isDragging ? 'grabbing' : 'pointer';
   };
 
   const handlePointerOut = () => {
     setHover(null);
-    document.body.style.cursor = 'default';
+    if (!isDragging) document.body.style.cursor = 'default';
   };
 
-  // Different geometries per type for visual distinction
   const geometry = useMemo(() => {
     switch (component.type) {
       case 'database':
@@ -92,7 +119,6 @@ export function ComponentMesh({ component }: Props) {
       case 'messageQueue':
         return <boxGeometry args={[1.4, 0.5, 0.7]} />;
       default:
-        // server / apiGateway — rack-like
         return <boxGeometry args={[0.9, 1.3, 0.7]} />;
     }
   }, [component.type]);
@@ -102,10 +128,12 @@ export function ComponentMesh({ component }: Props) {
       ref={groupRef}
       position={component.position}
       onClick={handleClick}
+      onPointerDown={handlePointerDown}
+      onPointerUp={handlePointerUp}
+      onPointerMove={handlePointerMove}
       onPointerOver={handlePointerOver}
       onPointerOut={handlePointerOut}
     >
-      {/* Main body */}
       <mesh ref={glowRef} castShadow receiveShadow>
         {geometry}
         <meshStandardMaterial
@@ -119,7 +147,6 @@ export function ComponentMesh({ component }: Props) {
         />
       </mesh>
 
-      {/* Selection ring */}
       {(isSelected || isHovered || isConnecting) && (
         <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.75, 0]}>
           <ringGeometry args={[0.95, 1.15, 32]} />
@@ -132,23 +159,18 @@ export function ComponentMesh({ component }: Props) {
         </mesh>
       )}
 
-      {/* Utilization bar (vertical) */}
       <mesh position={[0.7, -0.6 + util * 0.6, 0]}>
-        <boxGeometry args={[0.08, util * 1.2, 0.08]} />
+        <boxGeometry args={[0.08, Math.max(0.05, util * 1.2), 0.08]} />
         <meshBasicMaterial
           color={util > 0.85 ? '#ef4444' : util > 0.6 ? '#fbbf24' : '#22c55e'}
         />
       </mesh>
 
-      {/* Label */}
       <Html
         position={[0, 1.15, 0]}
         center
         distanceFactor={10}
-        style={{
-          pointerEvents: 'none',
-          userSelect: 'none',
-        }}
+        style={{ pointerEvents: 'none', userSelect: 'none' }}
       >
         <div className="flex flex-col items-center">
           <div
@@ -167,12 +189,6 @@ export function ComponentMesh({ component }: Props) {
           )}
         </div>
       </Html>
-
-      {/* Connection ports (visual only) */}
-      <mesh position={[0, 0, 0.55]} visible={false}>
-        <sphereGeometry args={[0.12, 8, 8]} />
-        <meshBasicMaterial color="#fff" />
-      </mesh>
     </group>
   );
 }
