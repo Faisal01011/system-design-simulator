@@ -1,12 +1,12 @@
-import { Suspense, useRef, useEffect } from 'react';
-import { Canvas, useFrame, useThree } from '@react-three/fiber';
-import { OrbitControls, Environment, ContactShadows } from '@react-three/drei';
+import { Suspense, useRef } from 'react';
+import { Canvas, useFrame } from '@react-three/fiber';
+import { OrbitControls, ContactShadows } from '@react-three/drei';
 import * as THREE from 'three';
 import { useStore } from '../../store/useStore';
 import { ComponentMesh } from './ComponentMesh';
 import { ConnectionLine, RequestParticles } from './ConnectionLine';
 import { GridPlane } from './GridPlane';
-import { runSimulationStep, resetEngine } from '../../simulation/engine';
+import { runSimulationStep } from '../../simulation/engine';
 
 function SimulationLoop() {
   const last = useRef(performance.now());

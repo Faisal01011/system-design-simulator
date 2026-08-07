@@ -1,5 +1,4 @@
-import { useMemo, useRef } from 'react';
-import { useFrame } from '@react-three/fiber';
+import { useMemo } from 'react';
 import * as THREE from 'three';
 import { Connection, SystemComponent } from '../../types';
 import { useStore } from '../../store/useStore';

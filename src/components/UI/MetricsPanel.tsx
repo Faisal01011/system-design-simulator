@@ -1,5 +1,5 @@
 import { useStore } from '../../store/useStore';
-import { Activity, Clock, AlertTriangle, Database, Zap } from 'lucide-react';
+import { Activity, Clock, AlertTriangle, Zap } from 'lucide-react';
 
 function MetricCard({
   label,
