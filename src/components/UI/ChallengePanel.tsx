@@ -76,14 +76,14 @@ export function ChallengePanel() {
   };
 
   return (
-    <div className="w-[340px] max-h-[calc(100vh-8rem)] overflow-y-auto custom-scrollbar rounded-2xl border border-white/10 bg-surface-800/95 backdrop-blur-xl shadow-2xl">
-      <div className="p-4 border-b border-white/5">
+    <div className="w-full h-full min-h-0 overflow-y-auto custom-scrollbar rounded-2xl border border-white/10 bg-surface-800/95 backdrop-blur-xl shadow-xl">
+      <div className="p-4 border-b border-white/5 sticky top-0 z-10 bg-surface-800/95 backdrop-blur-xl">
         <div className="flex items-center justify-between gap-3">
           <div>
             <div className="text-[10px] uppercase tracking-[0.2em] text-violet-300 font-semibold">Learning Game</div>
             <div className="text-base font-semibold text-white mt-1">Architecture Challenges</div>
           </div>
-          <div className="flex items-center gap-1.5 rounded-lg bg-amber-500/10 px-2.5 py-1.5 text-amber-300">
+          <div className="flex items-center gap-1.5 rounded-lg bg-amber-500/10 px-2.5 py-1.5 text-amber-300 shrink-0">
             <Trophy size={14} />
             <span className="text-xs font-mono">{progress.xp} XP</span>
           </div>
@@ -109,7 +109,7 @@ export function ChallengePanel() {
         <div>
           <div className="flex items-center justify-between gap-3">
             <h3 className="text-sm font-semibold text-white">{challenge.title}</h3>
-            <span className="text-[10px] rounded-full border border-violet-400/30 bg-violet-500/10 px-2 py-0.5 text-violet-300">
+            <span className="text-[10px] rounded-full border border-violet-400/30 bg-violet-500/10 px-2 py-0.5 text-violet-300 shrink-0">
               +{challenge.xp} XP
             </span>
           </div>
@@ -142,16 +142,16 @@ export function ChallengePanel() {
           <p className="mt-1.5 text-[11px] leading-relaxed text-slate-300">{challenge.lesson}</p>
         </div>
 
-        <div className="flex gap-2">
+        <div className="grid grid-cols-2 gap-2">
           <button
             onClick={startChallenge}
-            className="flex-1 rounded-lg bg-violet-500 px-3 py-2 text-xs font-semibold text-white transition hover:bg-violet-400"
+            className="rounded-lg bg-violet-500 px-3 py-2 text-xs font-semibold text-white transition hover:bg-violet-400"
           >
             Load Challenge
           </button>
           <button
             onClick={runTest}
-            className="flex-1 flex items-center justify-center gap-1.5 rounded-lg bg-emerald-500 px-3 py-2 text-xs font-semibold text-white transition hover:bg-emerald-400"
+            className="flex items-center justify-center gap-1.5 rounded-lg bg-emerald-500 px-3 py-2 text-xs font-semibold text-white transition hover:bg-emerald-400"
           >
             <PlayCircle size={14} /> Run Test
           </button>
@@ -188,7 +188,7 @@ export function ChallengePanel() {
             )}
 
             <div className="flex items-center gap-2 rounded-lg bg-white/[0.03] px-2.5 py-2 text-[11px] text-slate-300">
-              <CircleDollarSign size={14} className="text-emerald-400" />
+              <CircleDollarSign size={14} className="text-emerald-400 shrink-0" />
               Estimated architecture cost: <span className="font-mono text-white">${result.cost.toLocaleString()}/mo</span>
             </div>
 
