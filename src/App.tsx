@@ -74,18 +74,16 @@ export default function App() {
   }, []);
 
   return (
-    <div className="relative w-full h-full flex no-select">
+    <div className="relative w-full h-full flex no-select overflow-hidden bg-surface-900">
       <Sidebar />
 
-      <main className="relative flex-1 overflow-hidden">
+      <main className="relative flex-1 min-w-0 overflow-hidden">
         <Canvas3D />
 
-        <div className="absolute top-4 right-4 z-10">
-          <Controls />
-        </div>
-
-        <div className="absolute top-24 right-4 z-10">
-          <ChallengePanel />
+        <div className="absolute top-4 left-4 right-4 z-10 flex justify-end pointer-events-none">
+          <div className="pointer-events-auto max-w-full">
+            <Controls />
+          </div>
         </div>
 
         <button
@@ -100,6 +98,16 @@ export default function App() {
           System Design Learning Game · Three.js + React
         </div>
       </main>
+
+      <aside className="hidden xl:flex w-[360px] shrink-0 border-l border-white/5 bg-surface-900/70 p-3 overflow-hidden">
+        <ChallengePanel />
+      </aside>
+
+      <div className="xl:hidden absolute right-3 top-28 bottom-14 z-20 w-[min(340px,calc(100vw-1.5rem))] pointer-events-none">
+        <div className="h-full pointer-events-auto">
+          <ChallengePanel />
+        </div>
+      </div>
 
       <HelpOverlay />
     </div>
