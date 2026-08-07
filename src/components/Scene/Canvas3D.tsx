@@ -1,6 +1,6 @@
 import { Suspense, useRef } from 'react';
 import { Canvas, useFrame } from '@react-three/fiber';
-import { OrbitControls, ContactShadows } from '@react-three/drei';
+import { ContactShadows, Environment, OrbitControls } from '@react-three/drei';
 import * as THREE from 'three';
 import { useStore } from '../../store/useStore';
 import { ComponentMesh } from './ComponentMesh';
@@ -28,14 +28,26 @@ function SceneContent() {
 
   return (
     <>
-      <ambientLight intensity={0.35} />
+      <fog attach="fog" args={['#07101c', 24, 62]} />
+
+      <ambientLight intensity={0.18} />
+      <hemisphereLight args={['#9fdcff', '#111827', 0.55]} />
       <directionalLight
-        position={[8, 14, 6]}
-        intensity={1.1}
+        position={[10, 16, 8]}
+        intensity={2.1}
         castShadow
-        shadow-mapSize={[1024, 1024]}
+        shadow-mapSize={[2048, 2048]}
+        shadow-camera-near={1}
+        shadow-camera-far={55}
+        shadow-camera-left={-22}
+        shadow-camera-right={22}
+        shadow-camera-top={22}
+        shadow-camera-bottom={-22}
       />
-      <pointLight position={[-6, 6, -4]} intensity={0.4} color="#38bdf8" />
+      <pointLight position={[-8, 8, -6]} intensity={20} distance={30} color="#38bdf8" />
+      <pointLight position={[9, 5, 5]} intensity={10} distance={24} color="#a78bfa" />
+
+      <Environment preset="city" background={false} environmentIntensity={0.65} />
 
       <GridPlane />
 
@@ -51,16 +63,15 @@ function SceneContent() {
       <QueueStacks />
 
       <ContactShadows
-        position={[0, -0.03, 0]}
-        opacity={0.45}
-        scale={40}
-        blur={2.2}
-        far={8}
+        position={[0, -0.035, 0]}
+        opacity={0.62}
+        scale={46}
+        blur={2.8}
+        far={10}
       />
 
       <SimulationLoop />
 
-      {/* Click empty space to deselect */}
       <mesh
         rotation={[-Math.PI / 2, 0, 0]}
         position={[0, -0.05, 0]}
@@ -78,11 +89,15 @@ export function Canvas3D() {
     <div className="absolute inset-0">
       <Canvas
         shadows
+        dpr={[1, 1.75]}
         camera={{ position: [0, 12, 16], fov: 45, near: 0.1, far: 120 }}
-        gl={{ antialias: true, alpha: false }}
+        gl={{ antialias: true, alpha: false, powerPreference: 'high-performance' }}
         onCreated={({ gl }) => {
-          gl.setClearColor('#0a0e17');
+          gl.setClearColor('#07101c');
           gl.toneMapping = THREE.ACESFilmicToneMapping;
+          gl.toneMappingExposure = 1.05;
+          gl.shadowMap.enabled = true;
+          gl.shadowMap.type = THREE.PCFSoftShadowMap;
         }}
       >
         <Suspense fallback={null}>
@@ -93,7 +108,7 @@ export function Canvas3D() {
             dampingFactor={0.08}
             minDistance={4}
             maxDistance={45}
-            maxPolarAngle={Math.PI / 2.1}
+            maxPolarAngle={Math.PI / 2.08}
             target={[0, 0, 0]}
           />
         </Suspense>
