@@ -1,6 +1,6 @@
-import { Suspense, useRef } from 'react';
+import { useRef } from 'react';
 import { Canvas, useFrame } from '@react-three/fiber';
-import { ContactShadows, Environment, OrbitControls } from '@react-three/drei';
+import { ContactShadows, OrbitControls } from '@react-three/drei';
 import * as THREE from 'three';
 import { useStore } from '../../store/useStore';
 import { ComponentMesh } from './ComponentMesh';
@@ -30,11 +30,11 @@ function SceneContent() {
     <>
       <fog attach="fog" args={['#07101c', 24, 62]} />
 
-      <ambientLight intensity={0.18} />
-      <hemisphereLight args={['#9fdcff', '#111827', 0.55]} />
+      <ambientLight intensity={0.42} />
+      <hemisphereLight args={['#b8e8ff', '#111827', 0.9]} />
       <directionalLight
         position={[10, 16, 8]}
-        intensity={2.1}
+        intensity={2.4}
         castShadow
         shadow-mapSize={[2048, 2048]}
         shadow-camera-near={1}
@@ -44,10 +44,9 @@ function SceneContent() {
         shadow-camera-top={22}
         shadow-camera-bottom={-22}
       />
-      <pointLight position={[-8, 8, -6]} intensity={20} distance={30} color="#38bdf8" />
+      <directionalLight position={[-8, 10, -10]} intensity={1.05} color="#7dd3fc" />
+      <pointLight position={[-8, 8, -6]} intensity={18} distance={30} color="#38bdf8" />
       <pointLight position={[9, 5, 5]} intensity={10} distance={24} color="#a78bfa" />
-
-      <Environment preset="city" background={false} environmentIntensity={0.65} />
 
       <GridPlane />
 
@@ -64,7 +63,7 @@ function SceneContent() {
 
       <ContactShadows
         position={[0, -0.035, 0]}
-        opacity={0.62}
+        opacity={0.56}
         scale={46}
         blur={2.8}
         far={10}
@@ -95,23 +94,21 @@ export function Canvas3D() {
         onCreated={({ gl }) => {
           gl.setClearColor('#07101c');
           gl.toneMapping = THREE.ACESFilmicToneMapping;
-          gl.toneMappingExposure = 1.05;
+          gl.toneMappingExposure = 1.12;
           gl.shadowMap.enabled = true;
           gl.shadowMap.type = THREE.PCFSoftShadowMap;
         }}
       >
-        <Suspense fallback={null}>
-          <SceneContent />
-          <OrbitControls
-            makeDefault
-            enableDamping
-            dampingFactor={0.08}
-            minDistance={4}
-            maxDistance={45}
-            maxPolarAngle={Math.PI / 2.08}
-            target={[0, 0, 0]}
-          />
-        </Suspense>
+        <SceneContent />
+        <OrbitControls
+          makeDefault
+          enableDamping
+          dampingFactor={0.08}
+          minDistance={4}
+          maxDistance={45}
+          maxPolarAngle={Math.PI / 2.08}
+          target={[0, 0, 0]}
+        />
       </Canvas>
     </div>
   );
