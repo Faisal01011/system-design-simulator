@@ -10,67 +10,59 @@ interface Props {
 }
 
 export function ConnectionLine({ connection, components }: Props) {
-  const lineRef = useRef<THREE.Line>(null);
   const from = components.find((c) => c.id === connection.fromId);
   const to = components.find((c) => c.id === connection.toId);
 
-  const points = useMemo(() => {
-    if (!from || !to) return [];
+  const curve = useMemo(() => {
+    if (!from || !to) return null;
     const start = new THREE.Vector3(...from.position);
     const end = new THREE.Vector3(...to.position);
-    // Slight arc for visual polish
     const mid = start.clone().lerp(end, 0.5);
-    mid.y += 0.4;
-    return [start, mid, end];
-  }, [from?.position, to?.position]);
+    mid.y += 0.45;
+    return new THREE.QuadraticBezierCurve3(start, mid, end);
+  }, [from?.position[0], from?.position[2], to?.position[0], to?.position[2]]);
 
-  const curve = useMemo(() => {
-    if (points.length < 3) return null;
-    return new THREE.QuadraticBezierCurve3(points[0], points[1], points[2]);
-  }, [points]);
+  const geometry = useMemo(() => {
+    if (!curve) return null;
+    const pts = curve.getPoints(32);
+    return new THREE.BufferGeometry().setFromPoints(pts);
+  }, [curve]);
 
-  useFrame(() => {
-    // Optional subtle pulse on the line material
-  });
-
-  if (!from || !to || !curve) return null;
-
-  const curvePoints = curve.getPoints(24);
-  const geometry = new THREE.BufferGeometry().setFromPoints(curvePoints);
+  if (!from || !to || !geometry) return null;
 
   return (
-    <line ref={lineRef as any}>
-      <bufferGeometry attach="geometry" {...geometry} />
-      <lineBasicMaterial
-        color="#475569"
-        transparent
-        opacity={0.7}
-        linewidth={2}
-      />
+    <line>
+      <primitive object={geometry} attach="geometry" />
+      <lineBasicMaterial color="#475569" transparent opacity={0.65} />
     </line>
   );
 }
 
 /**
- * Instanced / simple particle rendering for in-flight requests.
+ * Simple particle rendering for in-flight requests.
+ * Capped in the engine for performance.
  */
 export function RequestParticles() {
   const particles = useStore((s) => s.particles);
   const components = useStore((s) => s.components);
 
+  // Pre-build a lookup for speed
+  const posMap = useMemo(() => {
+    const m = new Map<string, THREE.Vector3>();
+    components.forEach((c) => m.set(c.id, new THREE.Vector3(...c.position)));
+    return m;
+  }, [components]);
+
   return (
     <group>
       {particles.map((p) => {
-        const from = components.find((c) => c.id === p.fromId);
-        const to = components.find((c) => c.id === p.toId);
-        if (!from || !to) return null;
+        const start = posMap.get(p.fromId);
+        const end = posMap.get(p.toId);
+        if (!start || !end) return null;
 
-        const start = new THREE.Vector3(...from.position);
-        const end = new THREE.Vector3(...to.position);
         const mid = start.clone().lerp(end, 0.5);
-        mid.y += 0.4;
+        mid.y += 0.45;
 
-        // Quadratic bezier interpolation
         const t = p.progress;
         const pos = new THREE.Vector3()
           .addScaledVector(start, (1 - t) * (1 - t))
@@ -79,11 +71,11 @@ export function RequestParticles() {
 
         return (
           <mesh key={p.id} position={pos}>
-            <sphereGeometry args={[0.09, 8, 8]} />
+            <sphereGeometry args={[0.085, 6, 6]} />
             <meshBasicMaterial
-              color={p.isError ? '#ef4444' : '#38bdf8'}
+              color={p.isError ? '#f87171' : '#38bdf8'}
               transparent
-              opacity={0.9}
+              opacity={0.92}
             />
           </mesh>
         );
