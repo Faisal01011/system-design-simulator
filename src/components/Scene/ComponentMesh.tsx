@@ -23,6 +23,7 @@ export function ComponentMesh({ component }: Props) {
     selectComponent,
     setHover,
     updateComponentPosition,
+    components,
   } = useStore();
 
   const isSelected = selectedId === component.id;
@@ -31,15 +32,33 @@ export function ComponentMesh({ component }: Props) {
   const meta = COMPONENT_META[component.type];
 
   const util = component.utilization;
-  const healthColor = component.isHealthy ? meta.color : '#ef4444';
-  const emissiveIntensity = 0.15 + util * 0.55 + (isSelected ? 0.25 : 0);
+
+  // Determine if this is currently the bottleneck
+  const maxUtil = Math.max(...components.map((c) => c.utilization), 0);
+  const isBottleneck =
+    util >= 0.72 && util >= maxUtil - 0.02 && components.length > 1;
+
+  const healthColor = !component.isHealthy
+    ? '#ef4444'
+    : isBottleneck
+      ? '#f97316'
+      : meta.color;
+
+  const emissiveIntensity =
+    0.15 +
+    util * 0.55 +
+    (isSelected ? 0.25 : 0) +
+    (isBottleneck ? 0.35 : 0);
 
   useFrame(() => {
     if (!groupRef.current) return;
 
     const t = performance.now() * 0.001;
     const scalePulse =
-      1 + Math.sin(t * 2 + component.id.length) * 0.012 * (0.3 + util);
+      1 +
+      Math.sin(t * 2 + component.id.length) * 0.012 * (0.3 + util) +
+      (isBottleneck ? Math.sin(t * 6) * 0.025 : 0);
+
     if (!isDragging) {
       groupRef.current.scale.setScalar(scalePulse);
     }
@@ -47,7 +66,9 @@ export function ComponentMesh({ component }: Props) {
     if (glowRef.current) {
       const mat = glowRef.current.material as THREE.MeshStandardMaterial;
       mat.emissiveIntensity =
-        emissiveIntensity + Math.sin(t * 4) * 0.04 * util;
+        emissiveIntensity +
+        Math.sin(t * 4) * 0.04 * util +
+        (isBottleneck ? Math.sin(t * 8) * 0.15 : 0);
     }
   });
 
@@ -82,7 +103,6 @@ export function ComponentMesh({ component }: Props) {
   const handlePointerMove = (e: ThreeEvent<PointerEvent>) => {
     if (!isDragging) return;
     e.stopPropagation();
-    // Project onto XZ plane (y = 0)
     e.ray.intersectPlane(dragPlane.current, intersection.current);
     if (intersection.current) {
       updateComponentPosition(component.id, [
@@ -147,18 +167,28 @@ export function ComponentMesh({ component }: Props) {
         />
       </mesh>
 
-      {(isSelected || isHovered || isConnecting) && (
+      {/* Selection / hover / connecting ring */}
+      {(isSelected || isHovered || isConnecting || isBottleneck) && (
         <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.75, 0]}>
-          <ringGeometry args={[0.95, 1.15, 32]} />
+          <ringGeometry args={[0.95, 1.18, 32]} />
           <meshBasicMaterial
-            color={isConnecting ? '#fbbf24' : isSelected ? '#38bdf8' : '#94a3b8'}
+            color={
+              isBottleneck
+                ? '#f97316'
+                : isConnecting
+                  ? '#fbbf24'
+                  : isSelected
+                    ? '#38bdf8'
+                    : '#94a3b8'
+            }
             transparent
-            opacity={0.85}
+            opacity={isBottleneck ? 0.95 : 0.85}
             side={THREE.DoubleSide}
           />
         </mesh>
       )}
 
+      {/* Utilization bar */}
       <mesh position={[0.7, -0.6 + util * 0.6, 0]}>
         <boxGeometry args={[0.08, Math.max(0.05, util * 1.2), 0.08]} />
         <meshBasicMaterial
@@ -166,24 +196,32 @@ export function ComponentMesh({ component }: Props) {
         />
       </mesh>
 
+      {/* Label + bottleneck badge */}
       <Html
-        position={[0, 1.15, 0]}
+        position={[0, 1.25, 0]}
         center
         distanceFactor={10}
         style={{ pointerEvents: 'none', userSelect: 'none' }}
       >
-        <div className="flex flex-col items-center">
+        <div className="flex flex-col items-center gap-0.5">
+          {isBottleneck && (
+            <div className="px-1.5 py-0.5 rounded text-[9px] font-bold tracking-wide bg-orange-500/90 text-white animate-pulse">
+              BOTTLENECK
+            </div>
+          )}
           <div
             className={`px-2 py-0.5 rounded text-[11px] font-medium whitespace-nowrap backdrop-blur-sm border ${
               isSelected
                 ? 'bg-sky-500/30 border-sky-400 text-sky-100'
-                : 'bg-black/60 border-white/10 text-white/90'
+                : isBottleneck
+                  ? 'bg-orange-500/20 border-orange-400/60 text-orange-100'
+                  : 'bg-black/60 border-white/10 text-white/90'
             }`}
           >
             {component.name}
           </div>
           {component.utilization > 0.05 && (
-            <div className="mt-0.5 text-[9px] font-mono text-white/60">
+            <div className="text-[9px] font-mono text-white/60">
               {(component.utilization * 100).toFixed(0)}% util
             </div>
           )}

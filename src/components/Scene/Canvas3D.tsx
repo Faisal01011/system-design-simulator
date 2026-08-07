@@ -4,7 +4,7 @@ import { OrbitControls, ContactShadows } from '@react-three/drei';
 import * as THREE from 'three';
 import { useStore } from '../../store/useStore';
 import { ComponentMesh } from './ComponentMesh';
-import { ConnectionLine, RequestParticles } from './ConnectionLine';
+import { ConnectionLine, RequestParticles, QueueStacks } from './ConnectionLine';
 import { GridPlane } from './GridPlane';
 import { runSimulationStep } from '../../simulation/engine';
 
@@ -13,7 +13,7 @@ function SimulationLoop() {
 
   useFrame(() => {
     const now = performance.now();
-    const dt = Math.min((now - last.current) / 1000, 0.05); // clamp
+    const dt = Math.min((now - last.current) / 1000, 0.05);
     last.current = now;
     runSimulationStep(dt);
   });
@@ -48,6 +48,7 @@ function SceneContent() {
       ))}
 
       <RequestParticles />
+      <QueueStacks />
 
       <ContactShadows
         position={[0, -0.03, 0]}
