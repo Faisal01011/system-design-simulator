@@ -103,9 +103,9 @@ export function runSimulationStep(dt: number) {
   const rpsPerClient = clients.length > 0 ? targetRps / clients.length : 0;
 
   for (const client of clients) {
-    // The top-level RPS control is authoritative. Split target traffic evenly
-    // across healthy clients so changing the slider immediately changes load.
-    const clientRps = rpsPerClient;
+    // Use the global RPS by default, while still allowing an explicit
+    // per-client override from the Inspector when the user sets one.
+    const clientRps = client.config.rps ?? rpsPerClient;
     const expected = clientRps * effectiveDt;
     const count = Math.floor(expected) + (Math.random() < expected % 1 ? 1 : 0);
 
