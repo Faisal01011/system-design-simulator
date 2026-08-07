@@ -95,6 +95,11 @@ export function runSimulationStep(dt: number) {
   const speed = simulation.speed;
   const effectiveDt = dt * speed;
 
+  // Keep newly generated requests local until the final state update. Previously
+  // addParticle() was called here and the particles array was overwritten later
+  // in the same frame, so fresh particles often disappeared before rendering.
+  const spawnedParticles: RequestParticle[] = [];
+
   // ───────────────────────────────────────────────
   // 1. Generate new requests from Clients
   // ───────────────────────────────────────────────
@@ -103,8 +108,6 @@ export function runSimulationStep(dt: number) {
   const rpsPerClient = clients.length > 0 ? targetRps / clients.length : 0;
 
   for (const client of clients) {
-    // Use the global RPS by default, while still allowing an explicit
-    // per-client override from the Inspector when the user sets one.
     const clientRps = client.config.rps ?? rpsPerClient;
     const expected = clientRps * effectiveDt;
     const count = Math.floor(expected) + (Math.random() < expected % 1 ? 1 : 0);
@@ -117,7 +120,7 @@ export function runSimulationStep(dt: number) {
       const target = getComponent(edge.toId, components);
       if (!target || !target.isHealthy) continue;
 
-      const particle: RequestParticle = {
+      spawnedParticles.push({
         id: nextRequestId(),
         fromId: client.id,
         toId: target.id,
@@ -129,8 +132,7 @@ export function runSimulationStep(dt: number) {
         path: [client.id, target.id],
         currentHop: 0,
         trail: [],
-      };
-      store.addParticle(particle);
+      });
     }
   }
 
@@ -145,7 +147,6 @@ export function runSimulationStep(dt: number) {
   let cacheHits = 0;
   let cacheAttempts = 0;
 
-  // Live traffic count per connection (for edge thickness)
   const trafficCount: Record<string, number> = {};
 
   const runtime = new Map<string, SystemComponent>();
@@ -156,7 +157,6 @@ export function runSimulationStep(dt: number) {
     const to = runtime.get(p.toId);
     if (!from || !to) continue;
 
-    // Track traffic on this edge
     const edgeKey = `${p.fromId}->${p.toId}`;
     trafficCount[edgeKey] = (trafficCount[edgeKey] ?? 0) + 1;
 
@@ -166,7 +166,6 @@ export function runSimulationStep(dt: number) {
     const progressDelta = (TRAVEL_SPEED * effectiveDt) / dist;
     const nextProgress = Math.min(1, p.progress + progressDelta);
 
-    // Update trail (keep last 6 positions)
     const worldPos = bezierPoint(from.position, to.position, nextProgress);
     const trail = [...(p.trail ?? []), worldPos].slice(-6);
 
@@ -175,7 +174,6 @@ export function runSimulationStep(dt: number) {
       continue;
     }
 
-    // ── Arrived at target ──
     const arrived = { ...p, progress: 1, trail };
 
     const capacity = to.config.capacity;
@@ -225,7 +223,6 @@ export function runSimulationStep(dt: number) {
     to.avgLatencyMs =
       to.lastLatencySamples.reduce((a, b) => a + b, 0) / to.lastLatencySamples.length;
 
-    // Approximate queue length from active load
     to.queueLength = Math.max(0, to.activeRequests - to.config.capacity * 0.6);
 
     const totalLatencySoFar = now - arrived.startTime + processMs;
@@ -236,7 +233,10 @@ export function runSimulationStep(dt: number) {
       const outs = getOutgoing(to.id, connections);
       const backends = outs
         .map((e) => runtime.get(e.toId))
-        .filter((c): c is SystemComponent => !!c && (c.type === 'server' || c.type === 'cache' || c.type === 'apiGateway'));
+        .filter(
+          (c): c is SystemComponent =>
+            !!c && (c.type === 'server' || c.type === 'cache' || c.type === 'apiGateway')
+        );
 
       nextTarget = pickTarget(to, backends, to.config.algorithm ?? 'roundRobin');
     } else if (to.type === 'cache') {
@@ -246,7 +246,11 @@ export function runSimulationStep(dt: number) {
           nextTarget = runtime.get(outs[0].toId) ?? null;
         }
       }
-    } else if (to.type === 'server' || to.type === 'apiGateway' || to.type === 'messageQueue') {
+    } else if (
+      to.type === 'server' ||
+      to.type === 'apiGateway' ||
+      to.type === 'messageQueue'
+    ) {
       const outs = getOutgoing(to.id, connections);
       if (outs.length > 0) {
         const cacheEdge = outs.find((e) => {
@@ -300,7 +304,6 @@ export function runSimulationStep(dt: number) {
     }, Math.min(processMs * 2, 400));
   }
 
-  // Decay activeRequests + update utilization + queue
   runtime.forEach((c) => {
     if (c.activeRequests > 0) {
       c.activeRequests = Math.max(0, c.activeRequests - effectiveDt * 2);
@@ -316,7 +319,6 @@ export function runSimulationStep(dt: number) {
     return r ?? c;
   });
 
-  // Attach live traffic counts to connections
   const updatedConnections = connections.map((conn) => {
     const key = `${conn.fromId}->${conn.toId}`;
     return { ...conn, traffic: trafficCount[key] ?? 0 };
@@ -344,7 +346,7 @@ export function runSimulationStep(dt: number) {
   };
 
   useStore.setState({
-    particles: newParticles.slice(-320),
+    particles: [...newParticles, ...spawnedParticles].slice(-360),
     components: updatedComponents,
     connections: updatedConnections,
     metrics: newMetrics,
