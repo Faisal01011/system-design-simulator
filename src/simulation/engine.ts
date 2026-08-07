@@ -14,6 +14,7 @@ import {
   Connection,
   RequestParticle,
   LoadBalancingAlgorithm,
+  RequestKind,
 } from '../types';
 
 let requestIdCounter = 0;
@@ -63,6 +64,24 @@ function getComponent(id: string, components: SystemComponent[]): SystemComponen
   return components.find((c) => c.id === id);
 }
 
+function bezierPoint(
+  start: [number, number, number],
+  end: [number, number, number],
+  t: number
+): [number, number, number] {
+  const mid: [number, number, number] = [
+    (start[0] + end[0]) / 2,
+    0.45,
+    (start[2] + end[2]) / 2,
+  ];
+  const omt = 1 - t;
+  return [
+    omt * omt * start[0] + 2 * omt * t * mid[0] + t * t * end[0],
+    omt * omt * start[1] + 2 * omt * t * mid[1] + t * t * end[1],
+    omt * omt * start[2] + 2 * omt * t * mid[2] + t * t * end[2],
+  ];
+}
+
 /**
  * Main simulation step. Called every frame with delta time in seconds.
  */
@@ -81,12 +100,10 @@ export function runSimulationStep(dt: number) {
   // ───────────────────────────────────────────────
   const clients = components.filter((c) => c.type === 'client' && c.isHealthy);
   const targetRps = simulation.globalRps;
-  // Distribute global RPS across clients (or use their own config.rps)
   const rpsPerClient = clients.length > 0 ? targetRps / clients.length : 0;
 
   for (const client of clients) {
     const clientRps = client.config.rps ?? rpsPerClient;
-    // Poisson-ish arrival: probability of generating a request this frame
     const expected = clientRps * effectiveDt;
     const count = Math.floor(expected) + (Math.random() < expected % 1 ? 1 : 0);
 
@@ -94,12 +111,10 @@ export function runSimulationStep(dt: number) {
       const outs = getOutgoing(client.id, connections);
       if (outs.length === 0) continue;
 
-      // Client usually has one primary path (to LB or Gateway)
       const edge = outs[Math.floor(Math.random() * outs.length)];
       const target = getComponent(edge.toId, components);
       if (!target || !target.isHealthy) continue;
 
-      // Create a particle that will travel to the next hop
       const particle: RequestParticle = {
         id: nextRequestId(),
         fromId: client.id,
@@ -108,8 +123,10 @@ export function runSimulationStep(dt: number) {
         startTime: now,
         latencyMs: 0,
         isError: false,
+        kind: 'normal',
         path: [client.id, target.id],
         currentHop: 0,
+        trail: [],
       };
       store.addParticle(particle);
     }
@@ -118,7 +135,7 @@ export function runSimulationStep(dt: number) {
   // ───────────────────────────────────────────────
   // 2. Advance particles & process arrivals
   // ───────────────────────────────────────────────
-  const TRAVEL_SPEED = 8; // units per second on the grid
+  const TRAVEL_SPEED = 8;
   const newParticles: RequestParticle[] = [];
   const finishedLatencies: number[] = [];
   let completed = 0;
@@ -126,56 +143,62 @@ export function runSimulationStep(dt: number) {
   let cacheHits = 0;
   let cacheAttempts = 0;
 
-  // Working copies of component runtime state
+  // Live traffic count per connection (for edge thickness)
+  const trafficCount: Record<string, number> = {};
+
   const runtime = new Map<string, SystemComponent>();
-  components.forEach((c) => runtime.set(c.id, { ...c }));
+  components.forEach((c) => runtime.set(c.id, { ...c, queueLength: 0 }));
 
   for (const p of particles) {
     const from = runtime.get(p.fromId);
     const to = runtime.get(p.toId);
     if (!from || !to) continue;
 
-    // Distance-based progress
+    // Track traffic on this edge
+    const edgeKey = `${p.fromId}->${p.toId}`;
+    trafficCount[edgeKey] = (trafficCount[edgeKey] ?? 0) + 1;
+
     const dx = to.position[0] - from.position[0];
     const dz = to.position[2] - from.position[2];
     const dist = Math.sqrt(dx * dx + dz * dz) || 1;
     const progressDelta = (TRAVEL_SPEED * effectiveDt) / dist;
-    const nextProgress = p.progress + progressDelta;
+    const nextProgress = Math.min(1, p.progress + progressDelta);
+
+    // Update trail (keep last 6 positions)
+    const worldPos = bezierPoint(from.position, to.position, nextProgress);
+    const trail = [...(p.trail ?? []), worldPos].slice(-6);
 
     if (nextProgress < 1) {
-      // Still traveling
-      newParticles.push({ ...p, progress: nextProgress });
+      newParticles.push({ ...p, progress: nextProgress, trail });
       continue;
     }
 
     // ── Arrived at target ──
-    const arrived = { ...p, progress: 1 };
+    const arrived = { ...p, progress: 1, trail };
 
-    // Check capacity / queue
     const capacity = to.config.capacity;
-    const canAccept = to.activeRequests + to.queueLength < capacity * 1.5; // soft limit
+    const canAccept = to.activeRequests + to.queueLength < capacity * 1.5;
 
     if (!to.isHealthy || !canAccept) {
-      // Drop / error
       errors++;
       to.totalErrors += 1;
-      // particle dies
+      // Spawn a short-lived error particle visual is handled by kind
       continue;
     }
 
-    // Simulate processing time based on component type
     let processMs = to.config.processingLatencyMs;
+    let kind: RequestKind = arrived.kind;
 
-    // Type-specific behavior
     if (to.type === 'cache') {
       cacheAttempts++;
       const hit = Math.random() < (to.config.hitRate ?? 0.8);
       if (hit) {
         cacheHits++;
-        processMs = to.config.processingLatencyMs; // fast path
+        processMs = to.config.processingLatencyMs;
+        kind = 'cacheHit';
       } else {
-        // Miss → forward to next hop if any (usually DB or server)
         processMs = to.config.processingLatencyMs + 5;
+        kind = 'cacheMiss';
       }
     } else if (to.type === 'database') {
       processMs =
@@ -186,26 +209,26 @@ export function runSimulationStep(dt: number) {
       processMs = to.config.processingLatencyMs;
     }
 
-    // Add some jitter
     processMs *= 0.85 + Math.random() * 0.3;
 
-    // Failure injection
     if (Math.random() < to.config.failureRate) {
       errors++;
       to.totalErrors += 1;
+      kind = 'error';
       continue;
     }
 
-    // Occupy the component for a short visual time
     to.activeRequests += 1;
     to.totalProcessed += 1;
     to.lastLatencySamples = [...to.lastLatencySamples.slice(-49), processMs];
     to.avgLatencyMs =
       to.lastLatencySamples.reduce((a, b) => a + b, 0) / to.lastLatencySamples.length;
 
+    // Approximate queue length from active load
+    to.queueLength = Math.max(0, to.activeRequests - to.config.capacity * 0.6);
+
     const totalLatencySoFar = now - arrived.startTime + processMs;
 
-    // Decide next hop
     let nextTarget: SystemComponent | null = null;
 
     if (to.type === 'loadBalancer') {
@@ -214,26 +237,17 @@ export function runSimulationStep(dt: number) {
         .map((e) => runtime.get(e.toId))
         .filter((c): c is SystemComponent => !!c && (c.type === 'server' || c.type === 'cache' || c.type === 'apiGateway'));
 
-      nextTarget = pickTarget(
-        to,
-        backends,
-        to.config.algorithm ?? 'roundRobin'
-      );
+      nextTarget = pickTarget(to, backends, to.config.algorithm ?? 'roundRobin');
     } else if (to.type === 'cache') {
-      // On miss we may forward; on hit we stop (satisfied)
-      const hit = Math.random() < (to.config.hitRate ?? 0.8);
-      if (!hit) {
+      if (kind === 'cacheMiss') {
         const outs = getOutgoing(to.id, connections);
         if (outs.length > 0) {
-          const edge = outs[0]; // usually to DB or origin
-          nextTarget = runtime.get(edge.toId) ?? null;
+          nextTarget = runtime.get(outs[0].toId) ?? null;
         }
       }
     } else if (to.type === 'server' || to.type === 'apiGateway') {
-      // Servers may talk to cache or DB
       const outs = getOutgoing(to.id, connections);
       if (outs.length > 0) {
-        // Prefer cache if present, else first connection
         const cacheEdge = outs.find((e) => {
           const t = runtime.get(e.toId);
           return t?.type === 'cache';
@@ -242,34 +256,34 @@ export function runSimulationStep(dt: number) {
         nextTarget = runtime.get(edge.toId) ?? null;
       }
     } else if (to.type === 'cdn') {
-      // CDN usually terminates or goes to origin on miss
       const hit = Math.random() < (to.config.hitRate ?? 0.9);
       if (!hit) {
         const outs = getOutgoing(to.id, connections);
         if (outs.length > 0) nextTarget = runtime.get(outs[0].toId) ?? null;
+      } else {
+        kind = 'cacheHit';
       }
     }
 
-    // If there is a next hop, spawn a new particle
     if (nextTarget && nextTarget.isHealthy) {
       newParticles.push({
         id: nextRequestId(),
         fromId: to.id,
         toId: nextTarget.id,
         progress: 0,
-        startTime: arrived.startTime, // keep original start for end-to-end latency
+        startTime: arrived.startTime,
         latencyMs: totalLatencySoFar,
         isError: false,
+        kind,
         path: [...arrived.path, nextTarget.id],
         currentHop: arrived.currentHop + 1,
+        trail: [to.position],
       });
     } else {
-      // Request completed (or terminated)
       completed++;
       finishedLatencies.push(totalLatencySoFar);
     }
 
-    // Soft release of active slot (visual only)
     setTimeout(() => {
       const st = useStore.getState();
       const comp = st.components.find((c) => c.id === to.id);
@@ -285,23 +299,28 @@ export function runSimulationStep(dt: number) {
     }, Math.min(processMs * 2, 400));
   }
 
-  // Decay activeRequests gently if they got stuck
+  // Decay activeRequests + update utilization + queue
   runtime.forEach((c) => {
     if (c.activeRequests > 0) {
       c.activeRequests = Math.max(0, c.activeRequests - effectiveDt * 2);
     }
-    c.utilization = Math.min(1, (c.activeRequests + c.queueLength * 0.3) / Math.max(1, c.config.capacity));
+    c.utilization = Math.min(
+      1,
+      (c.activeRequests + c.queueLength * 0.4) / Math.max(1, c.config.capacity)
+    );
   });
 
-  // ───────────────────────────────────────────────
-  // 3. Commit runtime state back to store
-  // ───────────────────────────────────────────────
   const updatedComponents = components.map((c) => {
     const r = runtime.get(c.id);
     return r ?? c;
   });
 
-  // Metrics
+  // Attach live traffic counts to connections
+  const updatedConnections = connections.map((conn) => {
+    const key = `${conn.fromId}->${conn.toId}`;
+    return { ...conn, traffic: trafficCount[key] ?? 0 };
+  });
+
   const allSamples = [...latencySamples, ...finishedLatencies].slice(-500);
   const sorted = [...allSamples].sort((a, b) => a - b);
 
@@ -319,13 +338,14 @@ export function runSimulationStep(dt: number) {
     totalErrors: metrics.totalErrors + errors,
     cacheHitRate:
       cacheAttempts > 0
-        ? (metrics.cacheHitRate * 0.8 + (cacheHits / cacheAttempts) * 0.2)
+        ? metrics.cacheHitRate * 0.8 + (cacheHits / cacheAttempts) * 0.2
         : metrics.cacheHitRate,
   };
 
   useStore.setState({
-    particles: newParticles.slice(-300), // hard cap for performance
+    particles: newParticles.slice(-320),
     components: updatedComponents,
+    connections: updatedConnections,
     metrics: newMetrics,
     latencySamples: allSamples,
     simulation: {

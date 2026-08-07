@@ -10,6 +10,8 @@ export type ComponentType =
 
 export type LoadBalancingAlgorithm = 'roundRobin' | 'leastConnections' | 'random';
 
+export type RequestKind = 'normal' | 'cacheHit' | 'cacheMiss' | 'error';
+
 export interface ComponentConfig {
   // Common
   capacity: number;          // concurrent requests it can handle
@@ -55,6 +57,8 @@ export interface Connection {
   toId: string;
   fromPort?: string;
   toPort?: string;
+  /** Live traffic estimate (particles currently on this edge) */
+  traffic?: number;
 }
 
 export interface RequestParticle {
@@ -65,8 +69,11 @@ export interface RequestParticle {
   startTime: number;
   latencyMs: number;
   isError: boolean;
+  kind: RequestKind;
   path: string[];            // component ids in path (for multi-hop)
   currentHop: number;
+  /** Recent world positions for latency trail rendering */
+  trail: [number, number, number][];
 }
 
 export interface GlobalMetrics {
@@ -193,4 +200,12 @@ export const COMPONENT_META: Record<
     color: '#e879f9',
     icon: 'Shield',
   },
+};
+
+/** Colors used for different request kinds in the 3D view */
+export const REQUEST_KIND_COLORS: Record<RequestKind, string> = {
+  normal: '#38bdf8',
+  cacheHit: '#22d3ee',
+  cacheMiss: '#fb923c',
+  error: '#f87171',
 };
