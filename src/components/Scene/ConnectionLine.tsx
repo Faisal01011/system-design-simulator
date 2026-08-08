@@ -13,37 +13,27 @@ export function ConnectionLine({ connection, components }: Props) {
   const to = components.find((c) => c.id === connection.toId);
   const traffic = connection.traffic ?? 0;
 
-  const curve = useMemo(() => {
+  const geometry = useMemo(() => {
     if (!from || !to) return null;
     const start = new THREE.Vector3(...from.position);
     const end = new THREE.Vector3(...to.position);
     const mid = start.clone().lerp(end, 0.5);
     mid.y += 0.62;
-    return new THREE.QuadraticBezierCurve3(start, mid, end);
+    const curve = new THREE.QuadraticBezierCurve3(start, mid, end);
+    return new THREE.BufferGeometry().setFromPoints(curve.getPoints(24));
   }, [from?.position[0], from?.position[1], from?.position[2], to?.position[0], to?.position[1], to?.position[2]]);
-
-  const geometry = useMemo(() => {
-    if (!curve) return null;
-    return new THREE.BufferGeometry().setFromPoints(curve.getPoints(40));
-  }, [curve]);
 
   if (!from || !to || !geometry) return null;
 
   const intensity = Math.min(1, traffic / 10);
-  const opacity = 0.52 + intensity * 0.43;
-  const color = intensity > 0.12 ? '#38bdf8' : '#64748b';
+  const opacity = 0.55 + intensity * 0.35;
+  const color = intensity > 0.12 ? '#0284c7' : '#64748b';
 
   return (
-    <group>
-      <line renderOrder={1}>
-        <primitive object={geometry} attach="geometry" />
-        <lineBasicMaterial color={color} transparent opacity={opacity} depthWrite={false} />
-      </line>
-      <line renderOrder={0}>
-        <primitive object={geometry.clone()} attach="geometry" />
-        <lineBasicMaterial color="#0ea5e9" transparent opacity={0.14 + intensity * 0.22} depthWrite={false} />
-      </line>
-    </group>
+    <line renderOrder={1}>
+      <primitive object={geometry} attach="geometry" />
+      <lineBasicMaterial color={color} transparent opacity={opacity} depthWrite={false} />
+    </line>
   );
 }
 
@@ -62,9 +52,16 @@ export function RequestParticles() {
     return map;
   }, [components]);
 
+  const visibleParticles = useMemo(() => {
+    const maxVisible = 90;
+    if (particles.length <= maxVisible) return particles;
+    const step = particles.length / maxVisible;
+    return Array.from({ length: maxVisible }, (_, i) => particles[Math.floor(i * step)]);
+  }, [particles]);
+
   return (
     <group>
-      {particles.map((p) => {
+      {visibleParticles.map((p) => {
         const start = posMap.get(p.fromId);
         const end = posMap.get(p.toId);
         if (!start || !end) return null;
@@ -79,30 +76,13 @@ export function RequestParticles() {
           .addScaledVector(end, t * t);
 
         const color = particleColor(p.kind, p.isError);
-        const size = p.kind === 'error' ? 0.17 : p.kind === 'cacheMiss' ? 0.15 : 0.135;
+        const size = p.kind === 'error' ? 0.16 : p.kind === 'cacheMiss' ? 0.145 : 0.13;
 
         return (
-          <group key={p.id}>
-            <pointLight position={pos} color={color} intensity={0.7} distance={1.8} />
-            <mesh position={pos} renderOrder={3}>
-              <sphereGeometry args={[size, 10, 10]} />
-              <meshBasicMaterial color={color} transparent opacity={1} depthWrite={false} />
-            </mesh>
-            <mesh position={pos} scale={1.75} renderOrder={2}>
-              <sphereGeometry args={[size, 8, 8]} />
-              <meshBasicMaterial color={color} transparent opacity={0.14} depthWrite={false} />
-            </mesh>
-
-            {(p.trail ?? []).map((pt, i, arr) => {
-              const age = (i + 1) / (arr.length + 1);
-              return (
-                <mesh key={i} position={pt} renderOrder={2}>
-                  <sphereGeometry args={[size * 0.62 * age, 6, 6]} />
-                  <meshBasicMaterial color={color} transparent opacity={0.34 * age} depthWrite={false} />
-                </mesh>
-              );
-            })}
-          </group>
+          <mesh key={p.id} position={pos} renderOrder={3}>
+            <sphereGeometry args={[size, 6, 6]} />
+            <meshBasicMaterial color={color} transparent opacity={0.96} depthWrite={false} />
+          </mesh>
         );
       })}
     </group>
@@ -117,7 +97,7 @@ export function QueueStacks() {
       {components.map((c) => {
         if (c.queueLength < 1 && c.utilization < 0.7) return null;
 
-        const count = Math.min(8, Math.ceil(c.queueLength + c.utilization * 3));
+        const count = Math.min(6, Math.ceil(c.queueLength + c.utilization * 3));
         const baseY = 1.05;
 
         return (
@@ -126,9 +106,9 @@ export function QueueStacks() {
               <mesh key={i} position={[1.05, baseY + i * 0.16, 0]}>
                 <boxGeometry args={[0.14, 0.115, 0.14]} />
                 <meshBasicMaterial
-                  color={c.utilization > 0.85 ? '#f87171' : '#fbbf24'}
+                  color={c.utilization > 0.85 ? '#dc2626' : '#d97706'}
                   transparent
-                  opacity={0.82 - i * 0.065}
+                  opacity={0.85 - i * 0.08}
                 />
               </mesh>
             ))}

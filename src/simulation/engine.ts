@@ -82,9 +82,6 @@ function bezierPoint(
   ];
 }
 
-/**
- * Main simulation step. Called every frame with delta time in seconds.
- */
 export function runSimulationStep(dt: number) {
   const store = useStore.getState();
   const { components, connections, particles, simulation, metrics, latencySamples } = store;
@@ -94,15 +91,8 @@ export function runSimulationStep(dt: number) {
   const now = performance.now();
   const speed = simulation.speed;
   const effectiveDt = dt * speed;
-
-  // Keep newly generated requests local until the final state update. Previously
-  // addParticle() was called here and the particles array was overwritten later
-  // in the same frame, so fresh particles often disappeared before rendering.
   const spawnedParticles: RequestParticle[] = [];
 
-  // ───────────────────────────────────────────────
-  // 1. Generate new requests from Clients
-  // ───────────────────────────────────────────────
   const clients = components.filter((c) => c.type === 'client' && c.isHealthy);
   const targetRps = simulation.globalRps;
   const rpsPerClient = clients.length > 0 ? targetRps / clients.length : 0;
@@ -136,9 +126,6 @@ export function runSimulationStep(dt: number) {
     }
   }
 
-  // ───────────────────────────────────────────────
-  // 2. Advance particles & process arrivals
-  // ───────────────────────────────────────────────
   const TRAVEL_SPEED = 8;
   const newParticles: RequestParticle[] = [];
   const finishedLatencies: number[] = [];
@@ -148,7 +135,6 @@ export function runSimulationStep(dt: number) {
   let cacheAttempts = 0;
 
   const trafficCount: Record<string, number> = {};
-
   const runtime = new Map<string, SystemComponent>();
   components.forEach((c) => runtime.set(c.id, { ...c, queueLength: 0 }));
 
@@ -167,7 +153,7 @@ export function runSimulationStep(dt: number) {
     const nextProgress = Math.min(1, p.progress + progressDelta);
 
     const worldPos = bezierPoint(from.position, to.position, nextProgress);
-    const trail = [...(p.trail ?? []), worldPos].slice(-6);
+    const trail = [...(p.trail ?? []), worldPos].slice(-3);
 
     if (nextProgress < 1) {
       newParticles.push({ ...p, progress: nextProgress, trail });
@@ -175,7 +161,6 @@ export function runSimulationStep(dt: number) {
     }
 
     const arrived = { ...p, progress: 1, trail };
-
     const capacity = to.config.capacity;
     const canAccept = to.activeRequests + to.queueLength < capacity * 1.5;
 
@@ -200,10 +185,9 @@ export function runSimulationStep(dt: number) {
         kind = 'cacheMiss';
       }
     } else if (to.type === 'database') {
-      processMs =
-        Math.random() < 0.7
-          ? (to.config.readLatencyMs ?? 15)
-          : (to.config.writeLatencyMs ?? 40);
+      processMs = Math.random() < 0.7
+        ? (to.config.readLatencyMs ?? 15)
+        : (to.config.writeLatencyMs ?? 40);
     } else if (to.type === 'loadBalancer') {
       processMs = to.config.processingLatencyMs;
     }
@@ -222,11 +206,9 @@ export function runSimulationStep(dt: number) {
     to.lastLatencySamples = [...to.lastLatencySamples.slice(-49), processMs];
     to.avgLatencyMs =
       to.lastLatencySamples.reduce((a, b) => a + b, 0) / to.lastLatencySamples.length;
-
     to.queueLength = Math.max(0, to.activeRequests - to.config.capacity * 0.6);
 
     const totalLatencySoFar = now - arrived.startTime + processMs;
-
     let nextTarget: SystemComponent | null = null;
 
     if (to.type === 'loadBalancer') {
@@ -237,26 +219,16 @@ export function runSimulationStep(dt: number) {
           (c): c is SystemComponent =>
             !!c && (c.type === 'server' || c.type === 'cache' || c.type === 'apiGateway')
         );
-
       nextTarget = pickTarget(to, backends, to.config.algorithm ?? 'roundRobin');
     } else if (to.type === 'cache') {
       if (kind === 'cacheMiss') {
         const outs = getOutgoing(to.id, connections);
-        if (outs.length > 0) {
-          nextTarget = runtime.get(outs[0].toId) ?? null;
-        }
+        if (outs.length > 0) nextTarget = runtime.get(outs[0].toId) ?? null;
       }
-    } else if (
-      to.type === 'server' ||
-      to.type === 'apiGateway' ||
-      to.type === 'messageQueue'
-    ) {
+    } else if (to.type === 'server' || to.type === 'apiGateway' || to.type === 'messageQueue') {
       const outs = getOutgoing(to.id, connections);
       if (outs.length > 0) {
-        const cacheEdge = outs.find((e) => {
-          const t = runtime.get(e.toId);
-          return t?.type === 'cache';
-        });
+        const cacheEdge = outs.find((e) => runtime.get(e.toId)?.type === 'cache');
         const edge = cacheEdge ?? outs[Math.floor(Math.random() * outs.length)];
         nextTarget = runtime.get(edge.toId) ?? null;
       }
@@ -314,11 +286,7 @@ export function runSimulationStep(dt: number) {
     );
   });
 
-  const updatedComponents = components.map((c) => {
-    const r = runtime.get(c.id);
-    return r ?? c;
-  });
-
+  const updatedComponents = components.map((c) => runtime.get(c.id) ?? c);
   const updatedConnections = connections.map((conn) => {
     const key = `${conn.fromId}->${conn.toId}`;
     return { ...conn, traffic: trafficCount[key] ?? 0 };
@@ -346,7 +314,7 @@ export function runSimulationStep(dt: number) {
   };
 
   useStore.setState({
-    particles: [...newParticles, ...spawnedParticles].slice(-360),
+    particles: [...newParticles, ...spawnedParticles].slice(-180),
     components: updatedComponents,
     connections: updatedConnections,
     metrics: newMetrics,
@@ -358,7 +326,6 @@ export function runSimulationStep(dt: number) {
   });
 }
 
-/** Reset internal engine state */
 export function resetEngine() {
   requestIdCounter = 0;
   rrIndex = {};

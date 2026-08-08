@@ -4,26 +4,24 @@ export function GridPlane() {
   return (
     <>
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.065, 0]} receiveShadow>
-        <planeGeometry args={[260, 260]} />
-        <meshPhysicalMaterial
-          color="#07111d"
-          roughness={0.96}
-          metalness={0.04}
-          clearcoat={0.05}
-          clearcoatRoughness={0.95}
+        <planeGeometry args={[180, 180]} />
+        <meshStandardMaterial
+          color="#cbd8e6"
+          roughness={0.94}
+          metalness={0.02}
         />
       </mesh>
 
       <Grid
-        args={[56, 56]}
-        cellSize={1.4}
-        cellThickness={0.28}
-        cellColor="#12324a"
-        sectionSize={5.6}
-        sectionThickness={0.65}
-        sectionColor="#1d4f72"
-        fadeDistance={22}
-        fadeStrength={2.2}
+        args={[50, 50]}
+        cellSize={1.5}
+        cellThickness={0.22}
+        cellColor="#9bb0c4"
+        sectionSize={6}
+        sectionThickness={0.5}
+        sectionColor="#7894ad"
+        fadeDistance={20}
+        fadeStrength={2.4}
         followCamera={false}
         infiniteGrid={false}
         position={[0, -0.018, 0]}
