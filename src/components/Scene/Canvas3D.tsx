@@ -28,26 +28,26 @@ function SceneContent() {
 
   return (
     <>
-      <color attach="background" args={['#07101c']} />
-      <fog attach="fog" args={['#07101c', 28, 72]} />
+      <color attach="background" args={['#07111d']} />
+      <fog attach="fog" args={['#07111d', 26, 66]} />
 
-      <ambientLight intensity={0.4} />
-      <hemisphereLight args={['#b8e8ff', '#101827', 0.85]} />
+      <ambientLight intensity={0.68} />
+      <hemisphereLight args={['#c8eeff', '#0b1220', 1.15]} />
       <directionalLight
-        position={[10, 16, 8]}
-        intensity={2.35}
+        position={[10, 14, 10]}
+        intensity={2.45}
         castShadow
         shadow-mapSize={[2048, 2048]}
         shadow-camera-near={1}
         shadow-camera-far={55}
-        shadow-camera-left={-22}
-        shadow-camera-right={22}
-        shadow-camera-top={22}
-        shadow-camera-bottom={-22}
+        shadow-camera-left={-24}
+        shadow-camera-right={24}
+        shadow-camera-top={24}
+        shadow-camera-bottom={-24}
       />
-      <directionalLight position={[-8, 10, -10]} intensity={0.9} color="#7dd3fc" />
-      <pointLight position={[-8, 8, -6]} intensity={16} distance={30} color="#38bdf8" />
-      <pointLight position={[9, 5, 5]} intensity={8} distance={24} color="#a78bfa" />
+      <directionalLight position={[-10, 8, -8]} intensity={1.05} color="#7dd3fc" />
+      <pointLight position={[-7, 7, -5]} intensity={12} distance={26} color="#22d3ee" />
+      <pointLight position={[8, 5, 6]} intensity={8} distance={22} color="#a78bfa" />
 
       <GridPlane />
 
@@ -63,11 +63,11 @@ function SceneContent() {
       <QueueStacks />
 
       <ContactShadows
-        position={[0, -0.045, 0]}
-        opacity={0.52}
-        scale={48}
-        blur={2.8}
-        far={10}
+        position={[0, -0.04, 0]}
+        opacity={0.42}
+        scale={32}
+        blur={2.5}
+        far={8}
       />
 
       <SimulationLoop />
@@ -86,16 +86,16 @@ function SceneContent() {
 
 export function Canvas3D() {
   return (
-    <div className="absolute inset-0 bg-[#07101c]">
+    <div className="absolute inset-0 bg-[#07111d]">
       <Canvas
         shadows
         dpr={[1, 1.6]}
-        camera={{ position: [0, 12, 16], fov: 45, near: 0.1, far: 140 }}
+        camera={{ position: [0, 7.4, 11.5], fov: 40, near: 0.1, far: 120 }}
         gl={{ antialias: true, alpha: false, powerPreference: 'high-performance' }}
         onCreated={({ gl }) => {
-          gl.setClearColor('#07101c');
+          gl.setClearColor('#07111d');
           gl.toneMapping = THREE.ACESFilmicToneMapping;
-          gl.toneMappingExposure = 1.1;
+          gl.toneMappingExposure = 1.18;
           gl.shadowMap.enabled = true;
           gl.shadowMap.type = THREE.PCFSoftShadowMap;
         }}
@@ -105,10 +105,10 @@ export function Canvas3D() {
           makeDefault
           enableDamping
           dampingFactor={0.08}
-          minDistance={4}
-          maxDistance={45}
-          maxPolarAngle={Math.PI / 2.12}
-          target={[0, 0, 0]}
+          minDistance={5}
+          maxDistance={24}
+          maxPolarAngle={Math.PI / 2.1}
+          target={[0, 0.6, 0]}
         />
       </Canvas>
     </div>

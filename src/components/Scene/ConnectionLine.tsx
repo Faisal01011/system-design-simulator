@@ -11,7 +11,6 @@ interface Props {
 export function ConnectionLine({ connection, components }: Props) {
   const from = components.find((c) => c.id === connection.fromId);
   const to = components.find((c) => c.id === connection.toId);
-
   const traffic = connection.traffic ?? 0;
 
   const curve = useMemo(() => {
@@ -19,42 +18,31 @@ export function ConnectionLine({ connection, components }: Props) {
     const start = new THREE.Vector3(...from.position);
     const end = new THREE.Vector3(...to.position);
     const mid = start.clone().lerp(end, 0.5);
-    mid.y += 0.45;
+    mid.y += 0.62;
     return new THREE.QuadraticBezierCurve3(start, mid, end);
-  }, [from?.position[0], from?.position[2], to?.position[0], to?.position[2]]);
+  }, [from?.position[0], from?.position[1], from?.position[2], to?.position[0], to?.position[1], to?.position[2]]);
 
   const geometry = useMemo(() => {
     if (!curve) return null;
-    const pts = curve.getPoints(32);
-    return new THREE.BufferGeometry().setFromPoints(pts);
+    return new THREE.BufferGeometry().setFromPoints(curve.getPoints(40));
   }, [curve]);
 
   if (!from || !to || !geometry) return null;
 
-  // Traffic-weighted appearance
-  // 0 traffic → thin gray; high traffic → thicker + brighter cyan
-  const intensity = Math.min(1, traffic / 12);
-  const opacity = 0.35 + intensity * 0.55;
-  const color = intensity > 0.15 ? '#38bdf8' : '#475569';
+  const intensity = Math.min(1, traffic / 10);
+  const opacity = 0.52 + intensity * 0.43;
+  const color = intensity > 0.12 ? '#38bdf8' : '#64748b';
 
-  // Approximate thickness via a second slightly offset line is hard with <line>.
-  // We use color + opacity as the main signal and a subtle second pass for busy edges.
   return (
     <group>
-      <line>
+      <line renderOrder={1}>
         <primitive object={geometry} attach="geometry" />
-        <lineBasicMaterial color={color} transparent opacity={opacity} />
+        <lineBasicMaterial color={color} transparent opacity={opacity} depthWrite={false} />
       </line>
-      {intensity > 0.25 && (
-        <line>
-          <primitive object={geometry.clone()} attach="geometry" />
-          <lineBasicMaterial
-            color="#7dd3fc"
-            transparent
-            opacity={intensity * 0.35}
-          />
-        </line>
-      )}
+      <line renderOrder={0}>
+        <primitive object={geometry.clone()} attach="geometry" />
+        <lineBasicMaterial color="#0ea5e9" transparent opacity={0.14 + intensity * 0.22} depthWrite={false} />
+      </line>
     </group>
   );
 }
@@ -64,17 +52,14 @@ function particleColor(kind: RequestKind, isError: boolean): string {
   return REQUEST_KIND_COLORS[kind] ?? REQUEST_KIND_COLORS.normal;
 }
 
-/**
- * Request particles with kind-based coloring + short latency trails.
- */
 export function RequestParticles() {
   const particles = useStore((s) => s.particles);
   const components = useStore((s) => s.components);
 
   const posMap = useMemo(() => {
-    const m = new Map<string, THREE.Vector3>();
-    components.forEach((c) => m.set(c.id, new THREE.Vector3(...c.position)));
-    return m;
+    const map = new Map<string, THREE.Vector3>();
+    components.forEach((c) => map.set(c.id, new THREE.Vector3(...c.position)));
+    return map;
   }, [components]);
 
   return (
@@ -85,7 +70,7 @@ export function RequestParticles() {
         if (!start || !end) return null;
 
         const mid = start.clone().lerp(end, 0.5);
-        mid.y += 0.45;
+        mid.y += 0.62;
 
         const t = p.progress;
         const pos = new THREE.Vector3()
@@ -94,27 +79,26 @@ export function RequestParticles() {
           .addScaledVector(end, t * t);
 
         const color = particleColor(p.kind, p.isError);
-        const size = p.kind === 'error' ? 0.11 : p.kind === 'cacheMiss' ? 0.095 : 0.08;
+        const size = p.kind === 'error' ? 0.17 : p.kind === 'cacheMiss' ? 0.15 : 0.135;
 
         return (
           <group key={p.id}>
-            {/* Main particle */}
-            <mesh position={pos}>
-              <sphereGeometry args={[size, 6, 6]} />
-              <meshBasicMaterial color={color} transparent opacity={0.95} />
+            <pointLight position={pos} color={color} intensity={0.7} distance={1.8} />
+            <mesh position={pos} renderOrder={3}>
+              <sphereGeometry args={[size, 10, 10]} />
+              <meshBasicMaterial color={color} transparent opacity={1} depthWrite={false} />
+            </mesh>
+            <mesh position={pos} scale={1.75} renderOrder={2}>
+              <sphereGeometry args={[size, 8, 8]} />
+              <meshBasicMaterial color={color} transparent opacity={0.14} depthWrite={false} />
             </mesh>
 
-            {/* Latency trail – fading spheres along recent path */}
             {(p.trail ?? []).map((pt, i, arr) => {
               const age = (i + 1) / (arr.length + 1);
               return (
-                <mesh key={i} position={pt}>
-                  <sphereGeometry args={[size * 0.55 * age, 4, 4]} />
-                  <meshBasicMaterial
-                    color={color}
-                    transparent
-                    opacity={0.25 * age}
-                  />
+                <mesh key={i} position={pt} renderOrder={2}>
+                  <sphereGeometry args={[size * 0.62 * age, 6, 6]} />
+                  <meshBasicMaterial color={color} transparent opacity={0.34 * age} depthWrite={false} />
                 </mesh>
               );
             })}
@@ -125,9 +109,6 @@ export function RequestParticles() {
   );
 }
 
-/**
- * Visual queue stacks that appear next to overloaded components.
- */
 export function QueueStacks() {
   const components = useStore((s) => s.components);
 
@@ -137,20 +118,17 @@ export function QueueStacks() {
         if (c.queueLength < 1 && c.utilization < 0.7) return null;
 
         const count = Math.min(8, Math.ceil(c.queueLength + c.utilization * 3));
-        const baseY = 0.9;
+        const baseY = 1.05;
 
         return (
           <group key={`q-${c.id}`} position={c.position}>
             {Array.from({ length: count }).map((_, i) => (
-              <mesh
-                key={i}
-                position={[0.85, baseY + i * 0.14, 0]}
-              >
-                <boxGeometry args={[0.12, 0.1, 0.12]} />
+              <mesh key={i} position={[1.05, baseY + i * 0.16, 0]}>
+                <boxGeometry args={[0.14, 0.115, 0.14]} />
                 <meshBasicMaterial
                   color={c.utilization > 0.85 ? '#f87171' : '#fbbf24'}
                   transparent
-                  opacity={0.75 - i * 0.06}
+                  opacity={0.82 - i * 0.065}
                 />
               </mesh>
             ))}
